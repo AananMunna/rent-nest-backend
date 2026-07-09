@@ -1,465 +1,234 @@
-# 🏠 RentNest
+# RentNest 🏠 — Backend
 
-**Find & List Rental Properties with Ease**
+"Find & List Rental Properties with Ease"
 
-RentNest is a backend REST API for a rental property marketplace connecting tenants and landlords. Landlords list and manage properties; tenants browse, request, and pay for rentals; admins moderate the platform.
+RentNest is a REST API for a rental property marketplace. Landlords list properties and
+manage rental requests; tenants browse listings, request rentals, pay online, and leave
+reviews; admins moderate users, properties, and categories.
 
-![Node.js](https://img.shields.io/badge/Node.js-18.x-339933?logo=node.js&logoColor=white)
-![Express](https://img.shields.io/badge/Express-4.x-000000?logo=express&logoColor=white)
-![MongoDB](https://img.shields.io/badge/MongoDB-6.x-47A248?logo=mongodb&logoColor=white)
-![JWT](https://img.shields.io/badge/Auth-JWT-black?logo=jsonwebtokens)
-![License](https://img.shields.io/badge/License-MIT-blue.svg)
+## Tech Stack
 
----
+- **Runtime:** Node.js (ESM) + TypeScript, run via [`tsx`](https://github.com/privatenumber/tsx)
+- **Framework:** Express 5
+- **Database:** PostgreSQL (Prisma Postgres) via **Prisma ORM 7**
+- **Auth:** JWT (access + refresh tokens, httpOnly cookies), bcrypt password hashing
+- **Payments:** Stripe Checkout + webhooks
+- **Validation / error handling:** centralized `catchAsync` + `globalErrorHandler`
 
-## 📖 Table of Contents
-
-- [Overview](#-overview)
-- [Features](#-features)
-- [Tech Stack](#-tech-stack)
-- [Architecture](#-architecture)
-- [Getting Started](#-getting-started)
-- [Environment Variables](#-environment-variables)
-- [API Documentation](#-api-documentation)
-- [Database Schema](#-database-schema)
-- [Roles & Permissions](#-roles--permissions)
-- [Application Flows](#-application-flows)
-- [Project Structure](#-project-structure)
-- [Testing](#-testing)
-- [Deployment](#-deployment)
-- [Contributing](#-contributing)
-- [License](#-license)
-- [Contact](#-contact)
-
----
-
-## 🔎 Overview
-
-RentNest streamlines the rental process end-to-end:
-
-- **Landlords** list properties, control availability, and approve/reject rental requests.
-- **Tenants** discover listings, submit requests, pay securely, and leave reviews.
-- **Admins** oversee users, listings, and platform-wide moderation.
-
-The API is stateless, JWT-authenticated, and built around clear role-based access control (RBAC).
-
----
-
-## ✨ Features
-
-### Public
-- Browse all available rental properties
-- Search & filter by location, price range, property type, and amenities
-- View detailed property listings
-
-### Tenant
-- Register / login
-- Submit rental requests
-- Pay via **Stripe** or **SSLCommerz** after approval
-- View payment history & status
-- View rental request history (pending / approved / rejected)
-- Leave reviews after a completed rental
-- Manage profile
-
-### Landlord
-- Register / login
-- Create, edit, and remove property listings
-- Set property availability
-- Approve or reject rental requests
-- View rental history and tenant reviews
-
-### Admin
-- View and manage all users (ban / unban)
-- View all listings and rental requests
-- Manage property categories
-
----
-
-## 🛠️ Tech Stack
-
-| Layer            | Technology                          |
-|-------------------|--------------------------------------|
-| Runtime           | Node.js (v18+)                      |
-| Framework         | Express.js                          |
-| Database          | MongoDB with Mongoose ODM           |
-| Authentication    | JSON Web Tokens (JWT) + bcrypt      |
-| Payments          | Stripe API, SSLCommerz API          |
-| Validation        | Joi / express-validator             |
-| File Storage      | Cloudinary / local storage (config.)|
-| Environment Mgmt  | dotenv                              |
-| API Testing       | Postman / Thunder Client            |
-| Logging           | Morgan / Winston                    |
-
-> Update this table to match your actual implementation if it differs.
-
----
-
-## 🏗️ Architecture
+## Project Structure
 
 ```
-Client (Web/Mobile)
-        │
-        ▼
-   Express REST API
-        │
-   ┌────┴─────┐
-   │Middleware │ → Auth (JWT), Role Guard, Validation, Error Handler
-   └────┬─────┘
-        │
-   ┌────┴─────┐
-   │Controllers│ → Business logic per resource
-   └────┬─────┘
-        │
-   ┌────┴─────┐
-   │  Models   │ → Mongoose schemas
-   └────┬─────┘
-        │
-        ▼
-    MongoDB Atlas
+src/
+  app.ts                  # Express app, middleware, route mounting
+  server.ts               # Entry point — connects Prisma, starts the HTTP server
+  config/                 # Typed environment variable access
+  lib/prisma.ts           # Prisma client singleton
+  middlewares/            # auth, notFound, globalErrorHandler
+  utils/                  # catchAsync, sendResponse, jwt helpers
+  modules/
+    auth/                 # register, login, refresh, me
+    user/                 # profile get/update
+    category/             # category CRUD (admin)
+    property/             # public browse + detail
+    landlord/              # landlord property CRUD + incoming requests
+    rental/                # rental request lifecycle
+    payment/               # Stripe checkout, webhook, confirm, history
+    review/                 # post-completion reviews
+    admin/                  # users, properties, rentals oversight
+generated/prisma/         # Prisma-generated client (TypeScript source, do not edit)
+prisma/                   # schema + migrations
+api/index.ts              # Vercel serverless entry (not used for Render/Railway)
 ```
 
-External integrations: **Stripe** / **SSLCommerz** for payments.
+Each module follows a **route → controller → service** layering: routes only wire
+middleware + controller functions, controllers translate HTTP ⇄ service calls, services
+hold all Prisma/business logic.
 
----
+## Roles & Permissions
 
-## 🚀 Getting Started
+| Role | Key Permissions |
+|---|---|
+| **Tenant** | Browse listings, submit rental requests, pay, leave reviews, manage profile |
+| **Landlord** | Create/manage listings, approve/reject requests, view rental history |
+| **Admin** | Manage all users (ban/unban), oversee listings & requests, manage categories |
 
-### Prerequisites
+Role is selected at registration (`POST /api/auth/register`).
 
-- Node.js `v18.x` or higher
-- npm or yarn
-- MongoDB (local instance or MongoDB Atlas)
-- Stripe account (test keys) and/or SSLCommerz sandbox credentials
+## Getting Started
 
-### Installation
+### 1. Prerequisites
+- Node.js 20+
+- A PostgreSQL database (this project targets [Prisma Postgres](https://www.prisma.io/postgres), any Postgres works)
+- A [Stripe](https://stripe.com) account (test mode is fine for development)
 
+### 2. Install dependencies
 ```bash
-# 1. Clone the repository
-git clone https://github.com/<your-username>/rentnest.git
-cd rentnest
-
-# 2. Install dependencies
 npm install
-
-# 3. Set up environment variables
-cp .env.example .env
-# then fill in your own values (see below)
-
-# 4. Run the development server
-npm run dev
-
-# 5. (Optional) Seed the database
-npm run seed
 ```
+`postinstall` automatically runs `prisma generate`.
 
-The API will be available at `http://localhost:5000` by default.
-
----
-
-## 🔐 Environment Variables
-
+### 3. Configure environment variables
 Create a `.env` file in the project root:
 
 ```env
-# Server
-PORT=5000
+DATABASE_URL="postgresql://user:password@host:5432/dbname?sslmode=require"
+
 NODE_ENV=development
+PORT=5000
+APP_URL="http://localhost:3000"
 
-# Database
-MONGO_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/rentnest
+BCRYPT_SALT_ROUNDS=10
 
-# Auth
-JWT_SECRET=your_jwt_secret_key
-JWT_EXPIRES_IN=7d
+JWT_ACCESS_SECRET="replace-with-a-long-random-string"
+JWT_REFRESH_SECRET="replace-with-a-different-long-random-string"
+JWT_ACCESS_EXPIRES_IN=1d
+JWT_REFRESH_EXPIRES_IN=7d
 
-# Stripe
-STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxx
-STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxx
-
-# SSLCommerz
-SSLCOMMERZ_STORE_ID=your_store_id
-SSLCOMMERZ_STORE_PASSWORD=your_store_password
-SSLCOMMERZ_IS_LIVE=false
-
-# Client
-CLIENT_URL=http://localhost:3000
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
 ```
 
-> Never commit `.env` to version control. `.env.example` should list keys without values.
+Generate strong JWT secrets with:
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
 
----
+> `APP_URL` is used both for CORS (`Access-Control-Allow-Origin`) and as the base for
+> Stripe checkout `success_url`/`cancel_url` — it must match your frontend's exact origin
+> (no trailing slash).
 
-## 📡 API Documentation
+### 4. Set up the database
+```bash
+npx prisma migrate deploy   # apply existing migrations
+# or, while iterating on the schema locally:
+npx prisma migrate dev
+```
+
+### 5. Run the dev server
+```bash
+npm run dev
+```
+Server starts at `http://localhost:5000`.
+
+### 6. (Optional) Forward Stripe webhooks locally
+```bash
+stripe listen --forward-to localhost:5000/api/payments/webhook
+```
+Copy the printed `whsec_...` into `STRIPE_WEBHOOK_SECRET` in `.env` and restart the server.
+
+## Scripts
+
+| Script | Purpose |
+|---|---|
+| `npm run dev` | Start with file-watching (development) |
+| `npm run build` | Type-check the project with `tsc` (no emit relied upon at runtime) |
+| `npm run start` | Run production server via `tsx` |
+| `npm run stripe:webhook` | Forward Stripe webhook events to local server |
+
+## API Reference
 
 Base URL: `/api`
 
-### Authentication
-
-| Method | Endpoint             | Access | Description                    |
-|--------|-----------------------|--------|---------------------------------|
-| POST   | `/auth/register`     | Public | Register new user (tenant/landlord) |
-| POST   | `/auth/login`        | Public | Login user, return JWT         |
-| GET    | `/auth/me`           | Private| Get current authenticated user |
-
-### Properties (Public)
-
-| Method | Endpoint               | Access | Description                                  |
-|--------|-------------------------|--------|-----------------------------------------------|
-| GET    | `/properties`          | Public | Get all properties with filters (location, price, type) |
-| GET    | `/properties/:id`      | Public | Get property details                         |
-| GET    | `/categories`          | Public | Get all property categories                  |
-
-### Landlord Management
-
-| Method | Endpoint                        | Access   | Description                              |
-|--------|----------------------------------|----------|--------------------------------------------|
-| POST   | `/landlord/properties`          | Landlord | Create new property listing               |
-| PUT    | `/landlord/properties/:id`      | Landlord | Update property listing                   |
-| DELETE | `/landlord/properties/:id`      | Landlord | Remove property listing                   |
-| GET    | `/landlord/requests`            | Landlord | Get all rental requests for their properties |
-| PATCH  | `/landlord/requests/:id`        | Landlord | Approve or reject a rental request        |
-
-### Rental Requests
-
-| Method | Endpoint            | Access | Description                        |
-|--------|----------------------|--------|--------------------------------------|
-| POST   | `/rentals`          | Tenant | Submit a rental request             |
-| GET    | `/rentals`          | Private| Get user's rental requests          |
-| GET    | `/rentals/:id`      | Private| Get rental request details          |
-
-### Payments (Stripe / SSLCommerz)
-
-| Method | Endpoint             | Access | Description                                       |
-|--------|-----------------------|--------|-----------------------------------------------------|
-| POST   | `/payments/create`   | Tenant | Create a payment intent/session for an approved rental |
-| POST   | `/payments/confirm`  | Public*| Confirm/verify payment (webhook or callback)       |
-| GET    | `/payments`          | Private| Get user's payment history                         |
-| GET    | `/payments/:id`      | Private| Get payment details                                 |
-
-\* Webhook endpoints are typically public but verified via signature.
-
-### Reviews
-
-| Method | Endpoint      | Access | Description                          |
-|--------|----------------|--------|----------------------------------------|
-| POST   | `/reviews`    | Tenant | Create review (after completed rental) |
-
-### Admin
-
-| Method | Endpoint                  | Access | Description                    |
-|--------|----------------------------|--------|----------------------------------|
-| GET    | `/admin/users`            | Admin  | Get all users                  |
-| PATCH  | `/admin/users/:id`        | Admin  | Update user status (ban/unban) |
-| GET    | `/admin/properties`       | Admin  | Get all properties             |
-| GET    | `/admin/rentals`          | Admin  | Get all rental requests        |
-
-### Sample Request/Response
-
-**POST `/api/auth/register`**
-
-```json
-// Request
-{
-  "name": "Jane Doe",
-  "email": "jane@example.com",
-  "password": "SecurePass123!",
-  "role": "tenant"
-}
-
-// Response 201
-{
-  "success": true,
-  "data": {
-    "id": "665f1a2b3c4d5e6f7a8b9c0d",
-    "name": "Jane Doe",
-    "email": "jane@example.com",
-    "role": "tenant"
-  },
-  "token": "eyJhbGciOiJIUzI1NiIs..."
-}
-```
-
-All authenticated routes require:
-
-```
-Authorization: Bearer <token>
-```
-
----
-
-## 🗄️ Database Schema
+### Auth
+| Method | Endpoint | Access |
+|---|---|---|
+| POST | `/auth/register` | Public |
+| POST | `/auth/login` | Public |
+| POST | `/auth/refresh-token` | Public (requires refresh cookie) |
+| GET | `/auth/me` | Authenticated |
 
 ### Users
-| Field       | Type     | Notes                          |
-|-------------|----------|----------------------------------|
-| _id         | ObjectId | Primary key                    |
-| name        | String   | Required                       |
-| email       | String   | Required, unique                |
-| password    | String   | Hashed (bcrypt)                 |
-| role        | Enum     | `tenant` \| `landlord` \| `admin` |
-| status      | Enum     | `active` \| `banned`            |
-| createdAt   | Date     |                                  |
-
-### Properties
-| Field         | Type      | Notes                     |
-|---------------|-----------|----------------------------|
-| _id           | ObjectId  | Primary key                |
-| landlordId    | ObjectId  | Ref → Users                |
-| title         | String    |                             |
-| description   | String    |                             |
-| categoryId    | ObjectId  | Ref → Categories           |
-| price         | Number    | Per month                  |
-| location      | String    |                             |
-| amenities     | [String]  |                             |
-| images        | [String]  | URLs                       |
-| available     | Boolean   | Default `true`              |
-| createdAt     | Date      |                             |
+| Method | Endpoint | Access |
+|---|---|---|
+| GET | `/users/me` | Authenticated |
+| PUT | `/users/my-profile` | Authenticated |
 
 ### Categories
-| Field | Type     | Notes                        |
-|-------|----------|-------------------------------|
-| _id   | ObjectId | Primary key                   |
-| name  | String   | e.g. `Apartment`, `Studio`     |
+| Method | Endpoint | Access |
+|---|---|---|
+| GET | `/categories` | Public |
+| POST | `/categories` | Admin |
+| PATCH | `/categories/:id` | Admin |
+| DELETE | `/categories/:id` | Admin |
 
-### RentalRequests
-| Field             | Type     | Notes                                          |
-|-------------------|----------|--------------------------------------------------|
-| _id               | ObjectId | Primary key                                     |
-| tenantId          | ObjectId | Ref → Users                                     |
-| propertyId        | ObjectId | Ref → Properties                                |
-| status            | Enum     | `pending` \| `approved` \| `rejected` \| `active` \| `completed` |
-| moveInDate        | Date     |                                                  |
-| createdAt         | Date     |                                                  |
+### Properties (public)
+| Method | Endpoint | Access |
+|---|---|---|
+| GET | `/properties` | Public — filters: `searchTerm`, `categoryId`, `city`, `location`, `minPrice`, `maxPrice`, `page`, `limit`, `sortBy`, `sortOrder` |
+| GET | `/properties/:id` | Public |
+
+### Landlord
+| Method | Endpoint | Access |
+|---|---|---|
+| GET | `/landlord/properties/mine` | Landlord |
+| POST | `/landlord/properties` | Landlord |
+| PUT | `/landlord/properties/:id` | Landlord (owner) |
+| DELETE | `/landlord/properties/:id` | Landlord (owner) |
+| GET | `/landlord/requests` | Landlord |
+| PATCH | `/landlord/requests/:id` | Landlord — body: `{ "status": "APPROVED" \| "REJECTED" \| "COMPLETED" }` |
+
+### Rental Requests
+| Method | Endpoint | Access |
+|---|---|---|
+| POST | `/rentals` | Tenant |
+| GET | `/rentals` | Authenticated — scoped to caller's role |
+| GET | `/rentals/:id` | Authenticated (participant) |
 
 ### Payments
-| Field             | Type     | Notes                                    |
-|-------------------|----------|--------------------------------------------|
-| _id               | ObjectId | Primary key                               |
-| transactionId     | String   | Unique                                    |
-| rentalRequestId   | ObjectId | Ref → RentalRequests                      |
-| amount            | Number   |                                             |
-| method            | String   | e.g. `card`, `mobile_banking`             |
-| provider          | Enum     | `stripe` \| `sslcommerz`                  |
-| status            | Enum     | `pending` \| `completed` \| `failed`      |
-| paidAt            | Date     |                                             |
+| Method | Endpoint | Access |
+|---|---|---|
+| POST | `/payments/create` | Tenant — creates a Stripe Checkout session for an approved request |
+| POST | `/payments/webhook` | Stripe (raw body, signature-verified) |
+| POST | `/payments/confirm` | Manual fallback confirmation |
+| GET | `/payments` | Authenticated |
+| GET | `/payments/:id` | Authenticated |
 
 ### Reviews
-| Field       | Type     | Notes                          |
-|-------------|----------|----------------------------------|
-| _id         | ObjectId | Primary key                    |
-| tenantId    | ObjectId | Ref → Users                    |
-| propertyId  | ObjectId | Ref → Properties                |
-| rating      | Number   | 1–5                              |
-| comment     | String   |                                  |
-| createdAt   | Date     |                                  |
+| Method | Endpoint | Access |
+|---|---|---|
+| POST | `/reviews` | Tenant — only after the related rental is `COMPLETED` and paid |
+| GET | `/reviews/property/:propertyId` | Public |
 
----
+### Admin
+| Method | Endpoint | Access |
+|---|---|---|
+| GET | `/admin/users` | Admin — filters: `searchTerm`, `role`, `activeStatus`, `page`, `limit` |
+| PATCH | `/admin/users/:id` | Admin — body: `{ "activeStatus": "ACTIVE" \| "BLOCKED" }` |
+| GET | `/admin/properties` | Admin |
+| GET | `/admin/rentals` | Admin |
 
-## 👥 Roles & Permissions
-
-| Role      | Description                       | Key Permissions                                                   |
-|-----------|-------------------------------------|----------------------------------------------------------------------|
-| Tenant    | Users looking for rental properties | Browse listings, submit rental requests, leave reviews, manage profile |
-| Landlord  | Property owners who list rentals    | Create/manage listings, approve/reject requests, view tenant history  |
-| Admin     | Platform moderators                 | Manage all users, oversee all listings & requests, manage categories  |
-
-Role is selected at registration and enforced via middleware on protected routes.
-
----
-
-## 🔄 Application Flows
-
-### Tenant Journey
-`Register → Browse Properties → View Details → Submit Request → Await Approval → Make Payment (Stripe/SSLCommerz) → Leave Review`
-
-### Landlord Journey
-`Register → Create Listings → View Requests → Approve/Reject → Manage Properties`
-
-### Rental Request Lifecycle
-```
-PENDING ──approve──▶ APPROVED ──payment──▶ ACTIVE ──▶ COMPLETED
-   │
-   └──reject──▶ REJECTED
-```
-
----
-
-## 📁 Project Structure
+## Rental Request Lifecycle
 
 ```
-rentnest/
-├── src/
-│   ├── config/          # DB connection, env config
-│   ├── controllers/     # Route handlers
-│   ├── middleware/      # Auth, role guard, error handler, validation
-│   ├── models/          # Mongoose schemas
-│   ├── routes/          # Express route definitions
-│   ├── services/        # Payment providers, business logic
-│   ├── utils/           # Helpers (JWT, hashing, etc.)
-│   └── app.js           # Express app setup
-├── tests/                # Unit & integration tests
-├── .env.example
-├── .gitignore
-├── package.json
-└── README.md
+PENDING → APPROVED → (payment) → ACTIVE → COMPLETED
+        ↘ REJECTED
 ```
 
----
+Property `status` is kept in sync automatically: `RESERVED` while a request is
+`APPROVED`/`ACTIVE`, back to `AVAILABLE` once `COMPLETED`.
 
-## 🧪 Testing
+## Deployment
 
-```bash
-# Run all tests
-npm test
+This is a traditional long-running Express server — deploys cleanly to **Render** or
+**Railway** without modification.
 
-# Run with coverage
-npm run test:coverage
-```
+**Render:**
+- Build Command: `npm install --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build`
+- Start Command: `npm run start`
+- Set all variables from the `.env` section above (with production values), plus `NODE_ENV=production`
 
-Recommended: use Postman/Thunder Client collections for manual API verification, and Jest + Supertest for automated integration tests.
+After deploying:
+1. Point `APP_URL` at your deployed frontend's exact origin.
+2. Create a production Stripe webhook endpoint at `https://<your-backend>/api/payments/webhook`
+   and update `STRIPE_WEBHOOK_SECRET` with the new signing secret.
+3. Update the frontend's `NEXT_PUBLIC_API_URL` to point at the deployed backend.
 
----
+An `api/index.ts` + `vercel.json` are also included for Vercel serverless deployment, if
+preferred — see project notes for the trade-offs (cold starts, connection limits).
 
-## 📦 Deployment
+## Notes / Known Limitations
 
-1. Set `NODE_ENV=production` and configure production environment variables.
-2. Use a process manager such as **PM2** or deploy via a container (Docker).
-3. Point `MONGO_URI` to a production MongoDB Atlas cluster.
-4. Configure production Stripe/SSLCommerz keys and webhook URLs.
-5. Recommended hosts: Render, Railway, Vercel (serverless functions), or a VPS behind Nginx.
-
-```bash
-# Example with PM2
-npm install -g pm2
-pm2 start src/app.js --name rentnest-api
-```
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit your changes: `git commit -m "Add your feature"`
-4. Push to the branch: `git push origin feature/your-feature`
-5. Open a Pull Request
-
-Please follow existing code style and include tests for new functionality.
-
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
-
----
-
-## 📬 Contact
-
-**Project Maintainer:** Your Name
-📧 your.email@example.com
-🔗 [GitHub](https://github.com/<your-username>) · [LinkedIn](https://linkedin.com/in/<your-profile>)
-
----
-
-<p align="center">Built with ❤️ for the RentNest project</p>
+- Only **Stripe** is implemented as a payment provider (the original spec allows Stripe
+  *or* SSLCommerz — either satisfies the requirement).
+- `POST /api/payments/confirm` does not verify caller ownership of the payment; treat it
+  as a trusted fallback endpoint alongside the signed Stripe webhook, not a public API.
