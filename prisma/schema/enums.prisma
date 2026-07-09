@@ -25,6 +25,7 @@ enum RentalRequestStatus {
   CANCELED
 }
 
+
 enum PaymentProvider {
   STRIPE
 }
